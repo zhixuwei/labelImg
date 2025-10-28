@@ -79,13 +79,53 @@ def format_shortcut(text):
     return '<b>%s</b>+<b>%s</b>' % (mod, key)
 
 
-def generate_color_by_text(text):
+def generate_color_by_text_(text):
     s = ustr(text)
     hash_code = int(hashlib.sha256(s.encode('utf-8')).hexdigest(), 16)
     r = int((hash_code / 255) % 255)
     g = int((hash_code / 65025) % 255)
     b = int((hash_code / 16581375) % 255)
-    return QColor(r, g, b, 100)
+    return QColor(r, g, b, 80)
+
+
+def generate_color_by_text(text):
+    s = str(text)  # 替代ustr，兼容Python3
+    # 1. 哈希获取原始字节（0-255范围，比原大整数取模更均匀）
+    hash_bytes = hashlib.sha256(s.encode('utf-8')).digest()
+    # 取前3个字节作为初始R、G、B（避免原除法取模导致的数值偏移）
+    r = hash_bytes[0]
+    g = hash_bytes[1]
+    b = hash_bytes[2]
+
+    # 2. 核心：将RGB值限制在「50-200」范围（避免过暗<50或过亮>200）
+    def clamp_range(val):
+        # 线性映射到50-200：原0→50，原255→200，中间按比例缩放
+        return int(50 + (val / 255) * 150)  # 150=200-50
+
+    r = clamp_range(r)
+    g = clamp_range(g)
+    b = clamp_range(b)
+
+    # 3. 增强饱和度（避免灰调，确保颜色“有特色”）
+    def boost_saturation(r, g, b):
+        max_val = max(r, g, b)
+        min_val = min(r, g, b)
+        # 若最大最小差距太小（接近灰色），强制拉大差距
+        if (max_val - min_val) < 40:  # 差距阈值，可调整
+            # 策略：最大分量再提高20%，最小分量再降低20%
+            r = int(r * 1.2) if r == max_val else int(r * 0.8)
+            g = int(g * 1.2) if g == max_val else int(g * 0.8)
+            b = int(b * 1.2) if b == max_val else int(b * 0.8)
+            # 确保不超出50-200范围
+            return (max(50, min(r, 200)),
+                    max(50, min(g, 200)),
+                    max(50, min(b, 200)))
+        return (r, g, b)
+
+    r, g, b = boost_saturation(r, g, b)
+
+    # 4. 调整透明度（alpha=120，比原80更高，颜色更实但不遮挡细节）
+    return QColor(r, g, b, 80)
 
 
 def have_qstring():
